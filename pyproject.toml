@@ -1,0 +1,22 @@
+[project]
+name = "mvp_generator"
+version = "0.1.0"
+description = "Demo-ready MVP generator that turns a product idea into a dev starter pack."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.7.0",
+    "loguru>=0.7.0",
+    "streamlit>=1.36.0",
+    "requests>=2.31.0",
+    "openai>=1.60.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
