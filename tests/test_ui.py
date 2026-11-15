@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from streamlit.testing.v1 import AppTest
 
 from app.storage.models import Generation
@@ -15,7 +17,8 @@ def connect_ui(monkeypatch, client):
 
 def test_ui_demo_and_failure_clear_previous_success(monkeypatch, client, db):
     connect_ui(monkeypatch, client)
-    ui = AppTest.from_file("app/ui/streamlit_app.py").run()
+    script = Path(__file__).resolve().parents[1] / "app" / "ui" / "streamlit_app.py"
+    ui = AppTest.from_file(script).run()
     assert not ui.exception
     ui.text_area[0].set_value("A booking workspace for independent tutors")
     ui.button(key="FormSubmitter:mvp_form-Build starter pack →").click().run()
