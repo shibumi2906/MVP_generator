@@ -40,6 +40,6 @@ def test_ui_demo_and_failure_clear_previous_success(monkeypatch, client, db):
     ui.button(key="FormSubmitter:mvp_form-Build starter pack →").click().run()
     assert not ui.exception
     assert any("requires OPENAI_API_KEY" in error.value for error in ui.error)
-    assert not ui.session_state.filtered_state.get("last_generation")
-    assert not ui.session_state.filtered_state.get("zip_bytes")
+    assert "last_generation" not in ui.session_state
+    assert "zip_bytes" not in ui.session_state
     assert db.query(Generation).count() == 1
