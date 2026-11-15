@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker
 
 from app.storage.models import Base
 
-
 engine = create_engine("sqlite:///./mvp_generator.db", future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
@@ -18,6 +17,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-

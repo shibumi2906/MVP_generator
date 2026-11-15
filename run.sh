@@ -26,5 +26,3 @@ echo "  streamlit run app/ui/streamlit_app.py"
 echo
 
 uvicorn app.main:app --reload
-
-

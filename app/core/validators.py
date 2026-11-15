@@ -1,29 +1,22 @@
-from typing import Any, Tuple
+from typing import Any
 
-from loguru import logger
 from pydantic import ValidationError
 
-from app.core.assumptions import build_fallback_bundle
-from app.core.schemas import SpecBundle
+from app.core.errors import GenerationError
+from app.core.schemas import GenerationDraft, SpecBundle
 
 
-def validate_or_fallback_spec_bundle(
-    raw: Any, product_idea: str
-) -> Tuple[SpecBundle, bool]:
-    """
-    Try to validate raw data into SpecBundle.
-    Returns (bundle, used_fallback).
-    """
+def validate_spec_bundle(raw: Any, *, mode: str) -> SpecBundle:
     try:
-        bundle = SpecBundle.model_validate(raw)
-        return bundle, False
+        return GenerationDraft.model_validate(raw).to_bundle()
     except ValidationError as exc:
-        logger.warning(
-            "SpecBundle validation failed, using fallback: {}", exc,
-        )
-        reason = "LLM output invalid; fallback used."
-        fallback = build_fallback_bundle(product_idea=product_idea, reason=reason)
-        return fallback, True
-
-
-
+        issues = [
+            f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}"
+            for e in exc.errors(include_input=False, include_url=False)
+        ]
+        raise GenerationError(
+            "invalid_specification",
+            "The generated documents failed structure or consistency checks. Please retry or refine the brief.",
+            mode=mode,
+            issues=issues,
+        ) from exc

@@ -16,6 +16,3 @@ class Generation(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     input_json: Mapped[str] = mapped_column(Text, nullable=False)
     output_json: Mapped[str] = mapped_column(Text, nullable=False)
-
-
-

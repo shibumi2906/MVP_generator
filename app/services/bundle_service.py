@@ -1,25 +1,29 @@
 import io
 import zipfile
 
-from app.core.schemas import SpecBundle
+from app.core.schemas import Provenance, SpecBundle
 
 
 def _wrap_mermaid(diagram: str) -> str:
     return f"```mermaid\n{diagram}\n```"
 
 
-def build_zip_from_bundle(bundle: SpecBundle) -> bytes:
+def build_zip_from_bundle(bundle: SpecBundle, provenance: Provenance) -> bytes:
     mem = io.BytesIO()
     with zipfile.ZipFile(mem, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         readme = (
             f"# {bundle.title}\n\n"
             f"{bundle.summary}\n\n"
+            f"Mode: **{provenance.mode}** · Source: **{provenance.source}** · Status: **{provenance.status}**\n\n"
+            f"Consistency checked: **{provenance.consistency_checked}** · Fallback used: **{provenance.used_fallback}**\n\n"
             "This archive contains a PRD-lite, architecture, data model, API spec, "
             "and implementation task plan for the generated MVP.\n"
         )
         zf.writestr("README.md", readme)
+        zf.writestr("provenance.json", provenance.model_dump_json(indent=2))
+        zf.writestr("bundle.json", bundle.model_dump_json(indent=2))
 
-        prd_md = ["# PRD-lite", "", f"## Problem", bundle.prd_lite.problem, ""]
+        prd_md = ["# PRD-lite", "", "## Problem", bundle.prd_lite.problem, ""]
         prd_md.append("## Target user")
         prd_md.append(bundle.prd_lite.target_user)
         prd_md.append("")
@@ -87,6 +91,3 @@ def build_zip_from_bundle(bundle: SpecBundle) -> bytes:
 
     mem.seek(0)
     return mem.read()
-
-
-

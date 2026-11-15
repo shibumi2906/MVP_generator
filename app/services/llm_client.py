@@ -1,113 +1,97 @@
 import json
-import time
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from loguru import logger
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    OpenAI,
+    RateLimitError,
+)
 
-from app.core.assumptions import build_fallback_bundle
+from app.core.assumptions import build_demo_draft
+from app.core.errors import GenerationError
 from app.core.models import GenerationRequest
+from app.core.schemas import Provenance
 from app.utils.config import get_settings
 
-try:
-    from openai import OpenAI  # type: ignore
-except Exception:
-    OpenAI = None  # type: ignore
+
+@dataclass(frozen=True)
+class LLMResult:
+    data: Any
+    provenance: Provenance
 
 
-def _mock_spec(req: GenerationRequest, reason: str) -> Dict[str, Any]:
-    """Deterministic SpecBundle JSON for offline/demo usage."""
-    bundle = build_fallback_bundle(
-        product_idea=req.product_idea,
-        reason=reason,
-    )
-    return json.loads(bundle.model_dump_json())
-
-
-def _normalize_mode(mode: Optional[str]) -> str:
-    m = (mode or "").strip().lower()
-    if m in {"", "default"}:
-        return "auto"
-    return m
-
-
-def generate_spec(prompt: str, req: GenerationRequest) -> Dict[str, Any]:
-    """
-    Single LLM call entrypoint.
-    Returns dict that MUST be a JSON object matching SpecBundle keys.
-    """
+def generate_spec(prompt: str, req: GenerationRequest) -> LLMResult:
     settings = get_settings()
-    start = time.perf_counter()
-
-    mode = _normalize_mode(getattr(settings, "llm_mode", None))
-    key_present = bool(getattr(settings, "openai_api_key", None))
-    sdk_present = OpenAI is not None
-    model = getattr(settings, "openai_model", "unknown")
-
-    llm_log = logger.bind(channel="llm")
-    llm_log.info(
-        "LLM init mode={} key_present={} openai_sdk={} model={} prompt_len={}",
-        mode,
-        key_present,
-        sdk_present,
-        model,
-        len(prompt),
-    )
-
-    # AUTO mode: use OpenAI if possible, else mock
-    if mode == "auto":
-        mode = "openai" if (key_present and sdk_present) else "mock"
-
-    # MOCK mode
-    if mode == "mock":
-        reason = (
-            "LLM used MOCK spec. "
-            f"(mode={getattr(settings, 'llm_mode', None)!r}, key_present={key_present}, openai_sdk={sdk_present})"
+    if settings.llm_mode == "mock":
+        return LLMResult(
+            build_demo_draft(req.product_idea).model_dump(),
+            Provenance(
+                mode="mock",
+                source="demo_template",
+                status="demo",
+            ),
         )
-        data = _mock_spec(req, reason=reason)
-        duration_ms = (time.perf_counter() - start) * 1000
-        llm_log.info("LLM MOCK done duration_ms={:.2f}", duration_ms)
-        return data
-
-    # OPENAI mode: do NOT silently fallback
-    if mode != "openai":
-        raise RuntimeError(
-            f"Unknown LLM_MODE={getattr(settings, 'llm_mode', None)!r}. Use 'openai', 'mock', or 'auto'."
+    if settings.llm_mode != "openai":
+        raise GenerationError(
+            "invalid_mode",
+            "LLM_MODE must be mock or openai.",
+            mode=settings.llm_mode,
+            status_code=503,
         )
-
-    if not sdk_present:
-        raise RuntimeError("OpenAI SDK is not installed or failed to import. Install: pip install -U openai")
-
-    if not key_present:
-        raise RuntimeError("OPENAI_API_KEY is missing. Set it in .env and restart backend.")
-
-    client = OpenAI(api_key=settings.openai_api_key)
-
+    if not settings.openai_api_key:
+        raise GenerationError(
+            "missing_api_key", "OpenAI mode requires OPENAI_API_KEY on the server.", status_code=503
+        )
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Return ONLY a valid JSON object. No markdown. No code fences.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
-
-        content = resp.choices[0].message.content or "{}"
-        raw = json.loads(content)
-        success = True
-
+        with OpenAI(api_key=settings.openai_api_key, timeout=45.0, max_retries=0) as client:
+            response = client.responses.create(
+                model=settings.openai_model,
+                input=prompt,
+                text={"format": {"type": "json_object"}},
+            )
+        if response.status != "completed" or not response.output_text:
+            raise GenerationError(
+                "incomplete_response",
+                "OpenAI did not return a complete specification. Please retry.",
+            )
+        raw = json.loads(response.output_text)
+    except GenerationError:
+        raise
+    except APITimeoutError as exc:
+        raise GenerationError(
+            "provider_timeout", "OpenAI timed out. Please retry.", status_code=504
+        ) from exc
+    except RateLimitError as exc:
+        raise GenerationError(
+            "provider_rate_limit",
+            "OpenAI rate or quota limit reached. Check your account and retry.",
+            status_code=503,
+        ) from exc
+    except APIConnectionError as exc:
+        raise GenerationError(
+            "provider_unavailable", "Could not connect to OpenAI. Please retry.", status_code=503
+        ) from exc
+    except APIStatusError as exc:
+        logger.bind(channel="llm").warning("OpenAI request failed status={}", exc.status_code)
+        raise GenerationError(
+            "provider_error",
+            "OpenAI rejected the generation request. Check the server configuration.",
+        ) from exc
+    except (ValueError, TypeError) as exc:
+        raise GenerationError(
+            "invalid_provider_response", "OpenAI returned an invalid JSON response. Please retry."
+        ) from exc
     except Exception as exc:
-        llm_log.exception("LLM OPENAI call failed")
-        raw = _mock_spec(req, reason=f"OpenAI call failed: {exc}")
-        success = False
-
-    duration_ms = (time.perf_counter() - start) * 1000
-    llm_log.info("LLM OPENAI done duration_ms={:.2f} success={}", duration_ms, success)
-    return raw
-
-
-
-
+        logger.bind(channel="llm").error("OpenAI client failed type={}", type(exc).__name__)
+        raise GenerationError(
+            "provider_error",
+            "OpenAI generation failed. Please retry or check the server configuration.",
+        ) from exc
+    return LLMResult(
+        raw,
+        Provenance(mode="openai", source="openai", status="generated", model=settings.openai_model),
+    )

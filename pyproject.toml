@@ -1,6 +1,6 @@
 [project]
 name = "mvp_generator"
-version = "0.1.0"
+version = "0.2.0"
 description = "Demo-ready MVP generator that turns a product idea into a dev starter pack."
 requires-python = ">=3.12"
 dependencies = [
@@ -11,7 +11,7 @@ dependencies = [
     "loguru>=0.7.0",
     "streamlit>=1.36.0",
     "requests>=2.31.0",
-    "openai>=1.60.0",
+    "openai>=1.66.0",
     "python-dotenv>=1.0.0",
 ]
 
@@ -19,4 +19,22 @@ dependencies = [
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "httpx>=0.27.0", "ruff>=0.14.0"]
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+extend-safe-fixes = ["UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]

@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,15 +25,12 @@ def save_generation(
     db.commit()
 
 
-def get_generation(db: Session, generation_id: str) -> Optional[Generation]:
+def get_generation(db: Session, generation_id: str) -> Generation | None:
     stmt = select(Generation).where(Generation.id == generation_id)
     return db.execute(stmt).scalar_one_or_none()
 
 
-def list_generations(db: Session, limit: int = 5) -> List[Generation]:
+def list_generations(db: Session, limit: int = 5) -> list[Generation]:
     limit = max(1, min(limit, 20))
     stmt = select(Generation).order_by(Generation.created_at.desc()).limit(limit)
     return list(db.execute(stmt).scalars().all())
-
-
-

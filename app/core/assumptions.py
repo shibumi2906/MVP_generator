@@ -1,137 +1,107 @@
-from datetime import datetime
+"""Explicit offline example. Never used to recover a failed provider call."""
 
-from app.core.schemas import (
-    APISpec,
-    Architecture,
-    DataModel,
-    PRDLite,
-    SpecBundle,
-    TaskPlan,
-)
+from app.core.schemas import GenerationDraft
 
 
-def build_fallback_bundle(product_idea: str, reason: str) -> SpecBundle:
-    title = f"MVP for: {product_idea[:60]}"
-    summary = (
-        "Fallback specification generated because the LLM output was invalid or "
-        "could not be parsed. This is a conservative starter pack based only on "
-        "the provided product idea."
+def build_demo_draft(product_idea: str) -> GenerationDraft:
+    return GenerationDraft.model_validate(
+        {
+            "title": "Idea to first release · Demo",
+            "summary": "A generic item tracker demonstrating the starter pack format. This is an offline template, not an AI-generated design for your product.",
+            "prd_lite": {
+                "problem": f"Explore an MVP for: {product_idea}",
+                "target_user": "A small team testing its first product workflow.",
+                "scope_in": ["Create items with a title and status", "Browse saved items"],
+                "scope_out": ["Authentication", "Billing and external integrations"],
+                "user_journey": [
+                    "Open the workspace",
+                    "Create an item",
+                    "Review the saved item list",
+                ],
+                "nfr": [
+                    "Validate incoming titles and status values",
+                    "Persist items across application restarts",
+                ],
+                "open_questions": [
+                    "What domain entity should replace the generic Item?",
+                    "Which metric demonstrates user value?",
+                ],
+            },
+            "architecture": {
+                "components": [
+                    "Streamlit workspace",
+                    "FastAPI resource API",
+                    "SQLite item storage",
+                ],
+                "data_flow": [
+                    "UI sends an Item creation request",
+                    "API validates and stores Item",
+                    "UI retrieves saved items",
+                ],
+                "risks": ["This generic demo needs domain-specific design before implementation"],
+                "mermaid_diagram": "flowchart LR\n  UI[Streamlit] --> API[FastAPI]\n  API --> DB[(SQLite)]",
+            },
+            "contract": {
+                "entities": [
+                    {
+                        "name": "Item",
+                        "description": "A generic unit of user work",
+                        "fields": [
+                            {"name": "id", "type": "string", "primary_key": True},
+                            {"name": "title", "type": "string"},
+                            {"name": "status", "type": "string"},
+                        ],
+                    }
+                ],
+                "endpoints": [
+                    {
+                        "method": "POST",
+                        "path": "/items",
+                        "summary": "Create an item",
+                        "entity": "Item",
+                        "request_fields": ["title", "status"],
+                        "response_fields": ["id", "title", "status"],
+                    },
+                    {
+                        "method": "GET",
+                        "path": "/items",
+                        "summary": "List items",
+                        "entity": "Item",
+                        "request_fields": [],
+                        "response_fields": ["id", "title", "status"],
+                    },
+                ],
+                "tasks": [
+                    {
+                        "phase": "day1",
+                        "title": "Create Item storage and validate fields",
+                        "entities": ["Item"],
+                        "endpoints": [],
+                    },
+                    {
+                        "phase": "day2_3",
+                        "title": "Implement item creation and listing",
+                        "entities": ["Item"],
+                        "endpoints": ["POST /items", "GET /items"],
+                    },
+                    {
+                        "phase": "week1",
+                        "title": "Connect the workspace and verify persistence",
+                        "entities": ["Item"],
+                        "endpoints": ["POST /items", "GET /items"],
+                    },
+                    {
+                        "phase": "done_checklist",
+                        "title": "A created item appears in the saved list after restart",
+                        "entities": ["Item"],
+                        "endpoints": ["POST /items", "GET /items"],
+                    },
+                ],
+            },
+            "assumptions": [
+                "Explicit mock mode: a deterministic demo template was requested.",
+                "The generic Item is illustrative; the brief has not been designed by an LLM.",
+                "The demo uses FastAPI, SQLite and Streamlit regardless of the requested stack.",
+            ],
+        }
     )
-
-    prd = PRDLite(
-        problem=f"Enable a minimal viable product for: {product_idea}",
-        target_user="Early adopters and internal stakeholders exploring the concept.",
-        scope_in=[
-            "Core user flow from first contact to main value moment",
-            "Basic authentication and session handling if applicable",
-            "Minimal analytics and logging",
-        ],
-        scope_out=[
-            "Advanced growth/marketing automation",
-            "Complex integrations beyond simple REST APIs",
-        ],
-        user_journey=[
-            "User discovers the product or is invited.",
-            "User understands the value proposition on a simple landing.",
-            "User completes the main flow that demonstrates the core value.",
-        ],
-        nfr=[
-            "Fast iteration speed over perfect scalability.",
-            "Clear observability for debugging in early stages.",
-        ],
-        open_questions=[
-            "What is the precise success metric for the first week?",
-            "Which external systems are truly required for an MVP launch?",
-        ],
-    )
-
-    architecture = Architecture(
-        components=[
-            "FastAPI backend for API endpoints",
-            "SQLite database for persistence",
-            "Streamlit frontend for rapid UI iteration",
-        ],
-        data_flow=[
-            "User interacts with Streamlit UI.",
-            "UI sends requests to FastAPI backend.",
-            "Backend reads/writes to SQLite and returns structured responses.",
-        ],
-        risks=[
-            "SQLite may not scale for heavy concurrent usage.",
-            "LLM-based generation may introduce inaccuracies.",
-        ],
-        mermaid_diagram=(
-            "flowchart TD\n"
-            "  user[User] --> ui[Streamlit UI]\n"
-            "  ui --> api[FastAPI Backend]\n"
-            "  api --> db[(SQLite DB)]\n"
-            "  api --> llm[LLM Service]\n"
-        ),
-    )
-
-    data_model = DataModel(
-        entities=[
-            "Generation: stores input idea, generated spec bundle, timestamps.",
-            "User (implicit): represented via request, not persisted.",
-        ],
-        mermaid_erd=(
-            "erDiagram\n"
-            "  GENERATION {\n"
-            "    string id\n"
-            "    datetime created_at\n"
-            "    string title\n"
-            "    text input_json\n"
-            "    text output_json\n"
-            "  }\n"
-        ),
-    )
-
-    api_spec = APISpec(
-        format="markdown",
-        content=(
-            "### Endpoints\n\n"
-            "- `GET /health` – health check.\n"
-            "- `POST /generate` – generate MVP starter pack from product idea.\n"
-            "- `GET /history` – list previous generations.\n"
-            "- `POST /export` – export a generation as a ZIP bundle.\n"
-        ),
-    )
-
-    tasks = TaskPlan(
-        day1=[
-            "Clarify core value proposition and main user flow.",
-            "Implement basic FastAPI skeleton and health endpoint.",
-        ],
-        day2_3=[
-            "Wire LLM or mock service to generate structured specs.",
-            "Store generations in SQLite and expose history endpoint.",
-        ],
-        week1=[
-            "Refine prompts and validation rules based on feedback.",
-            "Polish Streamlit UI and export ZIP experience.",
-        ],
-        done_checklist=[
-            "User can enter an idea and see a structured MVP spec bundle.",
-            "User can export the bundle as a ZIP.",
-        ],
-    )
-
-    assumptions = [
-        reason,
-        "Fallback spec constructed from a generic MVP template.",
-        f"Generation time: {datetime.utcnow().isoformat()}Z",
-    ]
-
-    return SpecBundle(
-        title=title,
-        summary=summary,
-        prd_lite=prd,
-        architecture=architecture,
-        data_model=data_model,
-        api_spec=api_spec,
-        tasks=tasks,
-        assumptions=assumptions,
-    )
-
-
-

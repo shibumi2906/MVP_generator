@@ -1,12 +1,11 @@
 import time
 import uuid
+from collections.abc import Callable
 from contextvars import ContextVar
-from typing import Callable
 
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
 from loguru import logger
-
+from starlette.middleware.base import BaseHTTPMiddleware
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
@@ -16,12 +15,11 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Response]
     ) -> Response:
         request_id = str(uuid.uuid4())
-        request_id_var.set(request_id)
+        token = request_id_var.set(request_id)
+        response = None
 
         start = time.perf_counter()
-        logger.bind(channel="api").info(
-            f"Request start {request.method} {request.url.path}"
-        )
+        logger.bind(channel="api").info(f"Request start {request.method} {request.url.path}")
         try:
             response = await call_next(request)
         except Exception:
@@ -34,9 +32,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
                 f"status={getattr(response, 'status_code', 'unknown')} "
                 f"latency_ms={elapsed_ms:.2f}"
             )
+            request_id_var.reset(token)
 
         response.headers["X-Request-ID"] = request_id
         return response
-
-
-

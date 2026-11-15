@@ -1,9 +1,9 @@
-from typing import Any, Dict
+from typing import Any
 
 import streamlit as st
 
 
-def render_prd(result: Dict[str, Any]) -> None:
+def render_prd(result: dict[str, Any]) -> None:
     prd = result.get("prd_lite", {})
     st.subheader("Problem")
     st.write(prd.get("problem", ""))
@@ -23,7 +23,7 @@ def render_prd(result: Dict[str, Any]) -> None:
     _render_list("Open questions", prd.get("open_questions") or [])
 
 
-def render_architecture(result: Dict[str, Any]) -> None:
+def render_architecture(result: dict[str, Any]) -> None:
     arch = result.get("architecture", {})
     st.subheader("Components")
     for c in arch.get("components", []) or []:
@@ -38,24 +38,42 @@ def render_architecture(result: Dict[str, Any]) -> None:
     st.code(arch.get("mermaid_diagram", ""), language="mermaid")
 
 
-def render_erd(result: Dict[str, Any]) -> None:
+def render_erd(result: dict[str, Any]) -> None:
     dm = result.get("data_model", {})
-    st.subheader("Entities")
-    for e in dm.get("entities", []) or []:
-        st.markdown(f"- {e}")
-    st.subheader("Mermaid ERD")
-    st.code(dm.get("mermaid_erd", ""), language="mermaid")
+    contract = result.get("contract") or {}
+    if contract:
+        for entity in contract["entities"]:
+            st.subheader(entity["name"])
+            st.caption(entity["description"])
+            st.dataframe(
+                [
+                    {
+                        "Field": f["name"],
+                        "Type": f["type"],
+                        "Primary key": f["primary_key"],
+                        "References": f.get("references") or "—",
+                    }
+                    for f in entity["fields"]
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+    else:
+        for entity in dm.get("entities", []):
+            st.markdown(f"- {entity}")
+    with st.expander("Mermaid ERD source"):
+        st.code(dm.get("mermaid_erd", ""), language="mermaid")
 
 
-def render_api_spec(result: Dict[str, Any]) -> None:
+def render_api_spec(result: dict[str, Any]) -> None:
     api = result.get("api_spec", {})
-    st.subheader("Format")
-    st.write(api.get("format", ""))
-    st.subheader("Content")
-    st.code(api.get("content", ""), language="yaml")
+    if api.get("format") == "markdown":
+        st.markdown(api.get("content", ""))
+    else:
+        st.code(api.get("content", ""), language="yaml")
 
 
-def render_tasks(result: Dict[str, Any]) -> None:
+def render_tasks(result: dict[str, Any]) -> None:
     tasks = result.get("tasks", {})
 
     def _render_list(title: str, items: list[str] | None) -> None:
@@ -70,10 +88,7 @@ def render_tasks(result: Dict[str, Any]) -> None:
     _render_list("Done checklist", tasks.get("done_checklist") or [])
 
 
-def render_assumptions(result: Dict[str, Any]) -> None:
+def render_assumptions(result: dict[str, Any]) -> None:
     st.subheader("Assumptions")
     for a in result.get("assumptions", []) or []:
         st.markdown(f"- {a}")
-
-
-
