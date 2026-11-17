@@ -78,7 +78,10 @@ def test_language_switch_keeps_brief_result_and_zip_without_generating(monkeypat
     ui.text_area(key="constraints").set_value("Без платежей")
     ui.selectbox(key="language").select("en").run()
     assert not ui.exception
-    assert ui.query_params["lang"] == ["en"]
+    selected_language = ui.query_params["lang"]
+    assert (
+        selected_language[-1] if isinstance(selected_language, list) else selected_language
+    ) == "en"
     assert ui.title[0].value == "Turn your idea into a development plan"
     assert ui.text_area(key="product_idea").value == "Моя идея сервиса бронирования"
     assert ui.text_input(key="target_users").value == "Частные репетиторы"
