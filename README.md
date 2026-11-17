@@ -1,23 +1,67 @@
 # MVP Generator
 
-Turn a product brief into a developer starter pack: PRD-lite, architecture, an ERD, API documentation and an implementation plan. Built with **FastAPI, Pydantic, SQLAlchemy, SQLite and Streamlit**.
+[![Checks](https://github.com/shibumi2906/MVP_generator/actions/workflows/checks.yml/badge.svg)](https://github.com/shibumi2906/MVP_generator/actions/workflows/checks.yml)
 
-The focus is a trustworthy generation workflow: explicit demo and OpenAI modes, visible failures, connected documents, saved history and portable ZIP exports.
+**Turn a product idea into a consistent developer starter pack.**
 
-![MVP Generator workspace](docs/workspace.jpg)
+MVP Generator is a Python application that turns a short product brief into requirements, architecture, a data model, API documentation and an implementation plan. It combines a FastAPI backend with a bilingual Streamlit workspace, persistent history and downloadable document bundles.
 
-## What it does
+It generates a **development specification**, not a working application or source code.
 
-- Collects a product idea, audience, workflow, constraints and preferred stack.
-- Generates a structured specification with OpenAI, or displays a clearly labelled offline example.
-- Validates entities, API fields, foreign references and task coverage before saving.
-- Derives ERD, API documentation and task lists from one shared contract.
-- Lets you reopen saved packs from the sidebar and download their Markdown documents and provenance.
-- Preserves older saved results as **unverified**; their original source cannot be inferred reliably.
+**Stack:** Python 3.12+ · FastAPI · Pydantic · SQLAlchemy · SQLite · Streamlit · OpenAI Responses API · pytest · Ruff
 
-## Quick start
+## Try it in three steps
 
-Requires Python **3.12+**. Run commands from the repository root.
+1. Describe the product, its audience and the main user workflow. Use **Fill in an example** if you want a starting point.
+2. Generate a plan and review the **Requirements** and **Assumptions** tabs first.
+3. Reopen saved plans from the sidebar or download their documents as a ZIP to start implementation.
+
+The interface, help, examples, tooltips and error messages support **English and Russian**. Change **Язык / Language** in the sidebar. The selection is kept in the page URL, and switching preserves the brief, current result and prepared archive without making a model request. Existing document content stays in its original language.
+
+## What the project demonstrates
+
+| Engineering decision | Why it matters |
+| --- | --- |
+| One validated contract for entities, endpoints and tasks | ERD, API documentation and delivery tasks are derived from the same data instead of competing model outputs |
+| Explicit OpenAI and offline demo modes | Users can distinguish a real generation from a generic example; failures never silently become template successes |
+| Persistent token reservations | Concurrent requests share a daily budget, and restarting the API does not reset it |
+| Application-assigned provenance | Source, model and validation status survive history, reopening and export |
+| Isolated API and UI regression tests | Provider failures, invalid documents and language switching can be tested without paid API calls |
+| A single-column brief form and built-in help | The workspace remains usable in a narrow browser panel, with field-level guidance and a visible waiting timer |
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI[Streamlit workspace: English / Russian] --> API[FastAPI]
+    API --> Prompt[Brief + JSON schema]
+    Prompt --> Mode{Generation mode}
+    Mode -->|OpenAI| Count[Count input tokens]
+    Count --> Budget[Reserve daily allowance in SQLite]
+    Budget --> LLM[OpenAI Responses API]
+    LLM --> Usage[Record reported usage]
+    Usage --> Validate[Pydantic + contract checks]
+    Mode -->|Demo| Demo[Deterministic generic example]
+    Demo --> Validate
+    Validate --> Render[Render ERD, API docs and tasks]
+    Render --> Store[Save bundle + provenance in SQLite]
+    Store --> History[Reopen saved plans]
+    Store --> ZIP[Download document ZIP]
+```
+
+The model returns prose sections and a structured contract. Validation checks:
+
+- Unique entity and field names, typed fields and primary keys.
+- Foreign references to existing primary keys with matching types.
+- Unique method/path pairs and API fields that belong to the endpoint's entity.
+- Path parameters that map to entity fields.
+- Task references, entity/endpoint coverage and all four delivery phases.
+
+ERD, API and task views are rendered locally from that contract and checked again when a saved bundle is loaded. These checks establish structural consistency; they do not prove product correctness or production readiness.
+
+## Run locally
+
+Requires **Python 3.12+**. Run commands from the repository root.
 
 ```bash
 git clone https://github.com/shibumi2906/MVP_generator.git
@@ -35,11 +79,23 @@ source .venv/bin/activate
 .venv\Scripts\Activate.ps1
 ```
 
+Install dependencies:
+
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` (`cp .env.example .env` on macOS/Linux, `Copy-Item .env.example .env` in PowerShell). The default is offline demo mode:
+Copy `.env.example` to `.env`:
+
+```bash
+# macOS / Linux
+cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+The default configuration runs without an API key:
 
 ```dotenv
 LLM_MODE=mock
@@ -48,128 +104,93 @@ OPENAI_MODEL=gpt-4.1-mini
 API_BASE_URL=http://127.0.0.1:8000
 ```
 
-Start the API:
+Start the backend:
 
 ```bash
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-In a second terminal, activate the same environment and start the workspace:
+In another terminal, activate the same environment and start the UI:
 
 ```bash
-python -m streamlit run app/ui/streamlit_app.py
+python -m streamlit run app/ui/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
 ```
 
-Open the [workspace](http://localhost:8501) or [interactive API documentation](http://127.0.0.1:8000/docs). `run.sh` is also available for macOS, Linux and Git Bash.
+Open the [workspace](http://127.0.0.1:8501), [English interface](http://127.0.0.1:8501/?lang=en), [Russian interface](http://127.0.0.1:8501/?lang=ru) or [interactive API documentation](http://127.0.0.1:8000/docs).
 
-### OpenAI mode
+### Enable real generation
 
-Set `LLM_MODE=openai` and supply your own `OPENAI_API_KEY` in `.env`, then restart the API. `OPENAI_MODEL` must support the Responses API and JSON output. Never commit credentials; `.env` is ignored.
+In `.env`, set `LLM_MODE=openai`, add your own `OPENAI_API_KEY` and choose a model available to your API account. Restart the backend after changing these settings.
 
-| Server mode | Behavior | Result status |
-| --- | --- | --- |
-| `mock` | Deterministic generic Item tracker; no provider request | `demo` |
-| `openai` | Calls OpenAI and validates the returned contract | `generated` |
-| `openai`, missing key or provider failure | Non-2xx error; no template substitution, result or saved row | `failed` |
-| Old saved record | Read and export remain available; origin is unknown | `unverified` |
-
-Mode defaults to `mock` independently of whether a key exists. Demo mode illustrates the document format; it does **not** adapt a solution to the brief or requested stack. An unknown `LLM_MODE` is a configuration error.
-
-## Document consistency
-
-```mermaid
-flowchart LR
-    Brief --> Provider[OpenAI or explicit demo]
-    Provider --> Draft[Structured draft]
-    Draft --> Validation[Schema and reference checks]
-    Validation --> Contract[Shared contract]
-    Contract --> ERD[Mermaid ERD]
-    Contract --> API[API field and type documentation]
-    Contract --> Tasks[Implementation plan]
-    ERD --> Save[SQLite + provenance]
-    API --> Save
-    Tasks --> Save
-    Save --> Workspace[History and ZIP export]
+```dotenv
+LLM_MODE=openai
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-6.1-sol
+API_BASE_URL=http://127.0.0.1:8000
 ```
 
-The LLM produces `title`, `summary`, `prd_lite`, `architecture`, `assumptions` and a structured `contract`. It does not independently author competing ERD, API and task documents.
+The model must support the Responses API, input-token counting and JSON output. `gpt-6.1-sol` was verified with a live generation in this workspace; model access depends on your account. The demo configuration retains `gpt-4.1-mini` as its default model setting.
 
-The contract contains:
+The brief is sent to OpenAI in live mode. Keep credentials in the ignored `.env` file and avoid including secrets or real customer data in briefs.
 
-- **Entities:** unique names, typed fields and at least one primary key. Foreign references use `Entity.field` and must point to an existing primary key with the same type.
-- **Endpoints:** unique method/path pairs, an entity, request fields and response fields. All API fields and path parameters must exist on the endpoint's entity.
-- **Tasks:** a phase, title, entity references and endpoint references. Referenced endpoints must belong to the task's entities. Implementation tasks must cover every entity and endpoint; all four delivery phases are required.
+| Mode / outcome | Behavior |
+| --- | --- |
+| `mock` → `demo` | Same generic Item-tracker example for every brief; no provider call |
+| `openai` → `generated` | Model output is validated and saved with provenance |
+| Provider or validation failure | Explicit error; no fallback document or saved generation |
+| Legacy record → `unverified` | Original documents remain readable and exportable; origin is unknown |
 
-After validation, the service renders `data_model`, `api_spec` and `tasks` from that contract. Those views are checked again when a saved bundle is loaded. Invalid output is rejected, never replaced with a plausible template.
+Generation has a **180-second provider timeout** and a separate **15-second token-count timeout**. The UI waits up to **210 seconds** and shows elapsed time. GPT-5/6 models use low reasoning effort for this workflow. There are no automatic retries.
 
-**Limits:** this version models simple entity-scoped CRUD APIs. Transport-only fields, nested DTOs and composite response schemas need a richer contract. Checks guarantee structural references and coverage, not product correctness, the truth of prose, complete Mermaid syntax, API implementation or production readiness. Review every generated plan.
+### Daily token budget
 
-## API
+The application enforces **150,000 input + output tokens per day**, resetting at midnight **Asia/Jerusalem**.
+
+Before generation, it counts the input and atomically reserves the input plus up to **16,000 output tokens**. The output limit is reduced to fit the remaining allowance. The response's reported `usage.total_tokens` replaces the reservation, including for incomplete or invalid output. If usage is unknown after an error, the reservation stays counted for that day.
+
+The counter is stored in SQLite, survives restarts and appears in the sidebar and `/health`. An exhausted budget returns HTTP **429** without a generation call. Demo mode consumes no model tokens.
+
+This is an application-level budget, not an account-wide OpenAI spending limit. It does not include calls from other applications or usage before accounting was enabled. Requests are assigned to the local date on which their reservation is created.
+
+## API and exports
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | Service status, configured mode and configuration readiness |
-| `POST` | `/generate` | Generate, validate and save a pack |
-| `GET` | `/history?limit=5` | Recent packs with provenance; limit 1–20 |
-| `GET` | `/history/{generation_id}` | Reopen a saved pack |
-| `POST` | `/export` | Download a ZIP by generation ID |
+| `GET` | `/health` | Mode, configuration readiness and daily token balance |
+| `POST` | `/generate` | Generate, validate and save a plan |
+| `GET` | `/history?limit=5` | Recent plans; limit 1–20 |
+| `GET` | `/history/{generation_id}` | Reopen a saved plan |
+| `POST` | `/export` | Download a ZIP for a generation ID |
 
-Example generation request:
+Example request to `POST /generate`:
 
 ```json
 {
   "product_idea": "A booking workspace for independent tutors",
   "target_users": "Independent tutors",
   "core_user_flow": "Add a student, schedule a lesson, review the week",
-  "constraints": "One developer, one week",
+  "constraints": "One developer, one week, no payments",
   "output_stack": "FastAPI + SQLite + Streamlit"
 }
 ```
 
-Successful responses contain `generation_id`, `created_at`, `result` and `provenance`. Provenance is assigned by the application, not taken from the model's output:
+Successful responses include `generation_id`, `created_at`, `result` and application-assigned `provenance`. Errors use `detail.code`, a safe message and validation issues when applicable. HTTP statuses distinguish invalid input (422), budget exhaustion (429), provider/validation failures (502), unavailable configuration or service (503), timeouts (504) and missing records (404).
 
-```json
-{
-  "mode": "openai",
-  "source": "openai",
-  "status": "generated",
-  "model": "gpt-4.1-mini",
-  "used_fallback": false,
-  "consistency_checked": true
-}
-```
-
-Error responses contain `detail.code`, `message`, `mode`, `source`, `status: "failed"`, `used_fallback: false` and validation `issues` when applicable. Provider error bodies and credentials are not returned.
-
-| HTTP status | Meaning |
-| --- | --- |
-| `422` | Invalid request, including an idea shorter than 10 trimmed characters |
-| `502` | Provider rejection, incomplete/invalid response or failed document validation |
-| `503` | Missing configuration, unknown mode, connection failure or provider quota/rate limit |
-| `504` | Provider timeout |
-| `404` | Saved generation not found |
-
-The provider call has a 45-second timeout and no automatic retries. `/health` reports configuration readiness; it does not test provider connectivity or account quota. Failed attempts do not enter history. The UI clears the prior pack before a new attempt so a stale result cannot appear to be a fresh success.
-
-### ZIP contents
-
-Send `{"generation_id": "<id>"}` to `/export`. The archive includes:
+Send `{"generation_id": "<id>"}` to `POST /export` to receive:
 
 ```text
-README.md            # Title, summary and provenance
-PRD.md
-ARCHITECTURE.md       # Includes Mermaid source
-ERD.md                # Includes Mermaid source
-API_SPEC.md
-TASKS.md
-ASSUMPTIONS.md
-bundle.json           # Complete specification and shared contract
-provenance.json
+README.md          Title, summary and provenance
+PRD.md             Requirements and scope
+ARCHITECTURE.md    Components, data flow, risks and Mermaid source
+ERD.md             Data model and Mermaid source
+API_SPEC.md        Endpoint and field documentation
+TASKS.md           Phased implementation plan
+ASSUMPTIONS.md     Decisions that need review
+bundle.json        Complete specification and shared contract
+provenance.json    Source, model and validation status
 ```
 
-Provenance survives storage, history, reopen and export. Existing SQLite databases need no schema migration: new rows store a response envelope in `output_json`; old rows retain their original documents and are marked `legacy_unknown`, with `used_fallback: null` because their fallback history is unknown.
-
-## Development
+## Validation and testing
 
 ```bash
 python -m pytest -q
@@ -177,15 +198,33 @@ python -m ruff check app tests
 python -m ruff format --check app tests
 ```
 
-Tests use an isolated in-memory database and fake provider responses; they require no API key or paid API calls. Coverage includes provider errors, timeouts, malformed output, consistency failures, persistence, legacy history/export and Streamlit success/failure states.
+**Latest local verification: 60 tests passed.** Tests use isolated databases and fake provider responses; no API key or paid request is needed. Coverage includes contract validation, provider errors and timeouts, persistence, legacy records, ZIP export, token-budget concurrency and rollover, and bilingual UI state preservation.
+
+[GitHub Actions](https://github.com/shibumi2906/MVP_generator/actions/workflows/checks.yml) runs tests, lint and formatting checks on Python **3.12 and 3.13**.
+
+A separate **manual live smoke check on 17 November 2026** completed the full UI workflow with `gpt-6.1-sol`: a five-photo morphing-service brief produced a validated plan, saved history entry and a ZIP with all nine files. This checks a real provider interaction; it is separate from the deterministic test suite and is not a guarantee of response time or future availability.
+
+## Repository structure
 
 ```text
 app/api/          HTTP endpoints
-app/core/         Request/document schemas and shared contract validation
-app/services/     Provider client, orchestration, history and ZIP rendering
-app/storage/      SQLAlchemy persistence
-app/ui/           Streamlit workspace
-tests/            API, contract and UI regression tests
+app/core/         Schemas, contract validation and timeout budgets
+app/services/     Model client, token accounting, generation, history and export
+app/storage/      SQLAlchemy models and SQLite persistence
+app/ui/           Streamlit UI, translations and English/Russian help
+app/utils/        Environment configuration
+tests/            API, validation, token-budget and UI regression tests
+.github/workflows/ CI checks for Python 3.12 and 3.13
 ```
 
-SQLite is stored in `mvp_generator.db`; rotating logs are written to `logs/`. Both are ignored by Git. Use this as a local portfolio/demo application; authentication, tenant isolation and production deployment are outside its current scope.
+SQLite data is stored in `mvp_generator.db`; rotating logs are written to `logs/`. The database, logs, credentials and temporary working files are excluded from Git. Startup creates missing tables, including the daily usage counter; existing generation records remain readable.
+
+## Current scope
+
+This is a local portfolio/demo application. Authentication, tenant isolation, background generation jobs and production deployment are outside the current scope. The shared contract models simple entity-scoped APIs; nested DTOs, transport-only fields and composite response schemas need a richer model. Mermaid is exported as source, and complete diagram syntax is not guaranteed by contract validation.
+
+Generated plans need human review. The project demonstrates an AI-assisted specification workflow with explicit provenance, validation and usage controls—not automatic delivery of production software.
+
+## License
+
+[MIT](LICENSE)

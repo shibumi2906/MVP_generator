@@ -19,6 +19,13 @@ def mock_settings(monkeypatch):
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def isolated_token_budget(db, monkeypatch):
+    from app.services import token_budget
+
+    monkeypatch.setattr(token_budget, "SessionLocal", sessionmaker(bind=db.get_bind()))
+
+
 @pytest.fixture
 def db():
     engine = create_engine(

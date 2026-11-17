@@ -29,6 +29,9 @@ def fake_provider(monkeypatch, response=None, error=None):
         def __init__(self, **kwargs):
             calls.append(kwargs)
             self.responses = self
+            self.input_tokens = SimpleNamespace(
+                count=lambda **kwargs: SimpleNamespace(input_tokens=100)
+            )
 
         def __enter__(self):
             return self
@@ -40,6 +43,8 @@ def fake_provider(monkeypatch, response=None, error=None):
             calls.append(kwargs)
             if error:
                 raise error
+            if response is not None and not hasattr(response, "usage"):
+                response.usage = SimpleNamespace(total_tokens=500)
             return response
 
     monkeypatch.setenv("LLM_MODE", "openai")
@@ -92,6 +97,45 @@ def test_openai_success_uses_supported_sdk_parameters(client, monkeypatch):
     assert calls[1]["text"] == {"format": {"type": "json_object"}}
     assert "response_format" not in calls[1]
     assert calls[0]["max_retries"] == 0
+    assert calls[0]["timeout"] == 180.0
+    assert calls[1]["max_output_tokens"] == 16_000
+    assert client.get("/health").json()["token_budget"]["used_or_reserved"] == 500
+
+
+@pytest.mark.parametrize("model", ["gpt-4.1-mini", "gpt-6.1-sol"])
+def test_reasoning_effort_only_sent_to_reasoning_models(client, monkeypatch, model):
+    draft = build_demo_draft(PAYLOAD["product_idea"]).model_dump_json()
+    monkeypatch.setenv("OPENAI_MODEL", model)
+    calls = fake_provider(monkeypatch, SimpleNamespace(status="completed", output_text=draft))
+    assert client.post("/generate", json=PAYLOAD).status_code == 200
+    if model == "gpt-6.1-sol":
+        assert calls[1]["reasoning"] == {"effort": "low"}
+    else:
+        assert "reasoning" not in calls[1]
+
+
+def test_budget_blocks_provider_generation(client, monkeypatch):
+    from app.services import token_budget
+
+    token_budget.reserve(149_984)
+    calls = fake_provider(monkeypatch)
+    response = client.post("/generate", json=PAYLOAD)
+    assert response.status_code == 429
+    assert response.json()["detail"]["code"] == "daily_token_limit"
+    assert len(calls) == 1  # No paid generation call.
+
+
+def test_unknown_usage_keeps_reservation(client, monkeypatch):
+    draft = build_demo_draft(PAYLOAD["product_idea"]).model_dump_json()
+    fake_provider(monkeypatch, SimpleNamespace(status="completed", output_text=draft, usage=None))
+    assert client.post("/generate", json=PAYLOAD).status_code == 200
+    assert client.get("/health").json()["token_budget"]["used_or_reserved"] == 16_100
+
+
+def test_invalid_output_still_counts_actual_tokens(client, monkeypatch):
+    fake_provider(monkeypatch, SimpleNamespace(status="completed", output_text="invalid JSON"))
+    assert client.post("/generate", json=PAYLOAD).status_code == 502
+    assert client.get("/health").json()["token_budget"]["used_or_reserved"] == 500
 
 
 @pytest.mark.parametrize(

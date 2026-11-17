@@ -1,0 +1,5 @@
+"""Keep the UI request deadline longer than the provider's complete request budget."""
+
+TOKEN_COUNT_TIMEOUT_SECONDS = 15.0
+GENERATION_TIMEOUT_SECONDS = 180.0
+UI_REQUEST_TIMEOUT_SECONDS = TOKEN_COUNT_TIMEOUT_SECONDS + GENERATION_TIMEOUT_SECONDS + 15.0

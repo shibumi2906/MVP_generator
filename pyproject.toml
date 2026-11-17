@@ -9,9 +9,10 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "pydantic>=2.7.0",
     "loguru>=0.7.0",
-    "streamlit>=1.36.0",
+    "streamlit>=1.58.0",
     "requests>=2.31.0",
-    "openai>=1.66.0",
+    "openai>=2.15.0",
+    "tzdata>=2025.2",
     "python-dotenv>=1.0.0",
 ]
 
@@ -24,6 +25,9 @@ dev = ["pytest>=8.0.0", "httpx>=0.27.0", "ruff>=0.14.0"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.ui" = ["help_*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

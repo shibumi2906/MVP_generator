@@ -1,11 +1,18 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class DailyTokenUsage(Base):
+    __tablename__ = "daily_token_usage"
+
+    day: Mapped[str] = mapped_column(String, primary_key=True)
+    tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class Generation(Base):

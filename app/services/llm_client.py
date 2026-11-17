@@ -15,6 +15,8 @@ from app.core.assumptions import build_demo_draft
 from app.core.errors import GenerationError
 from app.core.models import GenerationRequest
 from app.core.schemas import Provenance
+from app.core.timeouts import GENERATION_TIMEOUT_SECONDS, TOKEN_COUNT_TIMEOUT_SECONDS
+from app.services import token_budget
 from app.utils.config import get_settings
 
 
@@ -47,12 +49,32 @@ def generate_spec(prompt: str, req: GenerationRequest) -> LLMResult:
             "missing_api_key", "OpenAI mode requires OPENAI_API_KEY on the server.", status_code=503
         )
     try:
-        with OpenAI(api_key=settings.openai_api_key, timeout=45.0, max_retries=0) as client:
+        with OpenAI(
+            api_key=settings.openai_api_key, timeout=GENERATION_TIMEOUT_SECONDS, max_retries=0
+        ) as client:
+            text_format = {"format": {"type": "json_object"}}
+            reasoning_options = (
+                {"reasoning": {"effort": "low"}}
+                if settings.openai_model.startswith(("gpt-5", "gpt-6"))
+                else {}
+            )
+            counted = client.responses.input_tokens.count(
+                model=settings.openai_model,
+                input=prompt,
+                text=text_format,
+                timeout=TOKEN_COUNT_TIMEOUT_SECONDS,
+                **reasoning_options,
+            )
+            day, reserved, output_limit = token_budget.reserve(counted.input_tokens)
             response = client.responses.create(
                 model=settings.openai_model,
                 input=prompt,
-                text={"format": {"type": "json_object"}},
+                text=text_format,
+                max_output_tokens=output_limit,
+                **reasoning_options,
             )
+            if response.usage is not None:
+                token_budget.settle(day, reserved, response.usage.total_tokens)
         if response.status != "completed" or not response.output_text:
             raise GenerationError(
                 "incomplete_response",
